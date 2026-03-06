@@ -76,7 +76,6 @@ if not df.empty:
         fig_hist.update_xaxes(nticks=10)
 
         st.plotly_chart(fig_hist, use_container_width=True)
-        st.plotly_chart(fig_hist, use_container_width=True)
 
     # 金融解説モード
     with st.expander("【解説】なぜ平均は正しいのか？"):
