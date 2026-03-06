@@ -5,7 +5,7 @@ import os
 
 # --- 設定 ---
 DB_FILE = "guesses.csv"
-TRUE_VALUE = 568  # ここに実際の正解数を入力してください
+TRUE_VALUE = 500  # ここに実際の正解数を入力
 
 st.set_page_config(page_title="群衆の知恵 デモ", layout="wide")
 
@@ -62,7 +62,20 @@ if not df.empty:
 
     with col2:
         # 分布グラフ
-        fig_hist = px.histogram(df, x="guess", title="予想値のバラつき（多様性）")
+        # --- 修正案：データに合わせて細かく表示する ---
+        fig_hist = px.histogram(
+            df, 
+            x="guess", 
+            title="予想値のバラつき（多様性）",
+            nbins=50,             # 棒の数を増やす（数字を大きくすると細かくなります）
+            text_auto=True,       # 棒の上に人数を表示
+        )
+        # 棒の見た目を整える設定
+        fig_hist.update_layout(bargap=0.1) 
+        # X軸のメモリを自動でいい感じにする
+        fig_hist.update_xaxes(nticks=10)
+
+        st.plotly_chart(fig_hist, use_container_width=True)
         st.plotly_chart(fig_hist, use_container_width=True)
 
     # 金融解説モード
