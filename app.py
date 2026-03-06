@@ -4,12 +4,12 @@ import plotly.express as px
 import os
 
 # --- 設定 ---
+TRUE_VALUE = 568  # 真値（正解）をここにセット
 DB_FILE = "guesses.csv"
-TRUE_VALUE = 500  # ここに実際の正解数を入力
 
 st.set_page_config(page_title="群衆の知恵 デモ", layout="wide")
 
-# データの初期化関数
+# データの読み込み
 def load_data():
     if os.path.exists(DB_FILE):
         return pd.read_csv(DB_FILE)
@@ -17,11 +17,7 @@ def load_data():
 
 df = load_data()
 
-# --- メイン画面 ---
-st.title("🔮 群衆の知恵：ビー玉数当て実験")
-st.write("多くの人の予想を合わせると、真実にどこまで近づくでしょうか？")
-
-# サイドバー：入力・管理
+# --- サイドバー：操作パネル ---
 with st.sidebar:
     st.header("スタッフ操作パネル")
     with st.form("input_form", clear_on_submit=True):
@@ -34,58 +30,86 @@ with st.sidebar:
             st.rerun()
 
     st.divider()
+    st.header("演出設定")
+    show_truth = st.toggle("正解（真値）を表示する")
+    
+    st.divider()
     if st.button("全データをリセット"):
         if os.path.exists(DB_FILE):
             os.remove(DB_FILE)
             st.rerun()
-    
-    if not df.empty:
-        csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button("結果をCSVで保存", data=csv, file_name="wisdom_results.csv")
 
-# --- 集計・グラフ表示 ---
+# --- メイン画面：導入解説 ---
+st.title("🔮 群衆の知恵：ビー玉数当て実験")
+
+st.info("""
+**「一人の天才よりも、100人の普通の人の平均の方が、真実に近い」**
+これを『群衆の知恵（Wisdom of the Crowd）』と呼びます。
+
+この実験では、皆さんの予想をリアルタイムで集計し、その「平均値」がどれだけ正解に近づくかを検証します。
+一人の予想は大きく外れるかもしれませんが、集団としての判断は驚くほど正確になります。
+""")
+
+with st.expander("💡 なぜこれが「投資」や「経済」に関係あるの？"):
+    st.write("""
+    実は、**「株価」や「為替」が決まる仕組み**もこれと同じです。
+    世界中の投資家が「この価値はこれくらいだ」と予想し、売り買いした結果（平均）が今の価格になっています。
+    
+    市場という「群衆」が、バラバラな情報を持ち寄り、一つの「妥当な価格」を作り出すプロセスを、この瓶の中で体験してみましょう！
+    """)
+
+# --- グラフと分析エリア ---
 if not df.empty:
-    col1, col2 = st.columns([1, 1])
-    
+    latest_guess = df["guess"].iloc[-1]
     current_avg = df["guess"].mean()
-    count = len(df)
-
+    df['cumulative_avg'] = df['guess'].expanding().mean()
+    
+    col1, col2 = st.columns(2)
+    
     with col1:
-        st.metric("現在の平均値", f"{current_avg:.1f} 個")
-        st.metric("サンプル数（人数）", f"{count} 人")
+        # 1. 収束プロセス
+        fig_line = px.line(df, y='cumulative_avg', title="平均値の収束プロセス",
+                          labels={'cumulative_avg': '個数', 'index': '参加人数'})
         
-        # 収束グラフ（平均値がどう推移したか）
-        df['cumulative_avg'] = df['guess'].expanding().mean()
-        fig_line = px.line(df, y='cumulative_avg', title="平均値の収束（人数が増えるほど真値へ）")
-        fig_line.add_hline(y=TRUE_VALUE, line_dash="dash", line_color="red", annotation_text="真解")
+        # 直近の予想（オレンジ点線）
+        fig_line.add_hline(y=latest_guess, line_dash="dot", line_color="#EF553B", 
+                          annotation_text=f"直近の予想: {latest_guess}個", annotation_position="bottom right")
+        
+        # 正解（緑実線：スイッチON時のみ）
+        if show_truth:
+            fig_line.add_hline(y=TRUE_VALUE, line_dash="solid", line_color="#00CC96", 
+                              annotation_text=f"正解: {TRUE_VALUE}個", annotation_position="top left")
+        
+        fig_line.update_layout(font=dict(size=18), xaxis_title="参加人数（人）", yaxis_title="個数（個）")
         st.plotly_chart(fig_line, use_container_width=True)
 
     with col2:
-        # 分布グラフ
-        # --- 修正案：データに合わせて細かく表示する ---
-        fig_hist = px.histogram(
-            df, 
-            x="guess", 
-            title="予想値のバラつき（多様性）",
-            nbins=50,             # 棒の数を増やす（数字を大きくすると細かくなります）
-            text_auto=True,       # 棒の上に人数を表示
-        )
-        # 棒の見た目を整える設定
-        fig_hist.update_layout(bargap=0.1) 
-        # X軸のメモリを自動でいい感じにする
-        fig_hist.update_xaxes(nticks=10)
-
+        # 2. 分布（ヒストグラム）
+        fig_hist = px.histogram(df, x="guess", title="予想値の分布（みんなのバラつき）",
+                                labels={'guess': '予想された個数', 'count': '人数'},
+                                nbins=30, text_auto=True)
+        fig_hist.update_layout(bargap=0.1, font=dict(size=18), 
+                               xaxis_title="予想された個数（個）", yaxis_title="人数（人）")
         st.plotly_chart(fig_hist, use_container_width=True)
 
-    # 金融解説モード
-    with st.expander("【解説】なぜ平均は正しいのか？"):
-        st.write(f"""
-        現在の平均値 **{current_avg:.1f}** は、正解の **{TRUE_VALUE}** に対して 
-        誤差 **{abs(current_avg - TRUE_VALUE)/TRUE_VALUE:.1%}** です。
+    # --- 足元の数字メトリクス ---
+    st.divider()
+    c1, c2, c3 = st.columns(3)
+    c1.metric("直近の予想", f"{latest_guess} 個")
+    c2.metric("現在の平均値", f"{current_avg:.1f} 個", delta=f"{current_avg - latest_guess:.1f}", delta_color="off")
+    c3.metric("参加人数", f"{len(df)} 人")
+
+    # --- 【復活！】正解表示時の決めゼリフ ---
+    if show_truth:
+        st.divider()
+        error_pct = abs(current_avg - TRUE_VALUE) / TRUE_VALUE
+        st.success(f"""
+        ### 🎊 正解は {TRUE_VALUE} 個でした！
+        現在の平均値 **{current_avg:.1f}** との誤差は、わずか **{error_pct:.1%}** です。
         
-        これは金融市場における**「効率的市場仮説」**の簡易モデルです。
-        一人の天才（専門家）を探すよりも、多様な背景を持つ大勢の予想を統合する方が、
-        結果として「妥当な価格」を形成しやすくなります。
+        これが『群衆の知恵』の力です。
+        個々の予想はバラバラでも、多様な意見が集まることで、集団の平均は真実（妥当な価格）へと驚くほど近づいていくのです。
         """)
+
 else:
     st.info("左側のパネルから最初の予想を入力してください。")
